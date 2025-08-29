@@ -1,4 +1,3 @@
----
 
 # 🤖 LLM Agent POC (Browser + Node.js)
 
@@ -10,7 +9,6 @@ A minimal, browser-based **LLM Agent** that supports **tool calling** and integr
 
 Great for exploring tool use with LLMs in a simple web-based setup.
 
----
 
 ## 📁 Project Structure
 
