@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LLM Agent POC — Browser</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { padding: 18px; }
+    #chat { height: 60vh; overflow:auto; border:1px solid #e3e3e3; padding:12px; border-radius:8px; background:#fafafa }
+    .msg.user { text-align:right }
+    .msg.agent { text-align:left }
+    pre { background:#111; color:#fff; padding:8px; border-radius:6px; overflow:auto }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="row mb-2">
+    <div class="col-md-8">
+      <h3>LLM Agent POC (Browser)</h3>
+      <small class="text-muted">Model picker + tool-calls + sandboxed JS eval (POC)</small>
+    </div>
+    <div class="col-md-4 text-end">
+      <select id="modelPicker" class="form-select form-select-sm" style="width:200px; display:inline-block">
+        <option value="gpt-4o-mini">gpt-4o-mini (example)</option>
+        <option value="gpt-4o">gpt-4o</option>
+        <option value="local/mock">local/mock (dev)</option>
+      </select>
+    </div>
+  </div>
+  <div id="alertArea"></div>
+  <div id="chat" class="mb-3"></div>
+  <div class="input-group mb-3">
+    <input id="userInput" type="text" class="form-control" placeholder="Type a message (e.g. 'Search for IBM and summarize')">
+    <button id="sendBtn" class="btn btn-primary">Send</button>
+  </div>
+  <div class="mb-4">
+    <button id="clearBtn" class="btn btn-outline-secondary btn-sm">Clear</button>
+    <button id="debugBtn" class="btn btn-outline-info btn-sm">Show Debug</button>
+  </div>
+  <h6>Agent Tools (status)</h6>
+  <ul>
+    <li>Google Search – proxied at <code>/api/search?q=</code></li>
+    <li>AI Pipe – proxied at <code>/api/aipipe</code></li>
+    <li>JS Eval – sandboxed iframe (client-side)</li>
+  </ul>
+  <hr>
+  <small class="text-muted">This is a minimal single-file POC. Backend must provide /api/llm, /api/search and /api/aipipe proxies.</small>
+</div>
+
+<script>
+// ======= Simple local conversation + tool-calling loop =======
+const chatEl = document.getElementById('chat');
+const inputEl = document.getElementById('userInput');
+const sendBtn = document.getElementById('sendBtn');
+const clearBtn = document.getElementById('clearBtn');
+const debugBtn = document.getElementById('debugBtn');
+const modelPicker = document.getElementById('modelPicker');
+
+let messages = [];
+let debugMode = false;
+
+// Render a message
+function addMessage(role, content) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = `<b>${role}:</b> ${content}`;
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+// Sandbox eval
+function runInSandbox(code) {
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  document.body.appendChild(iframe);
+  const result = iframe.contentWindow.eval(code);
+  document.body.removeChild(iframe);
+  return result;
+}
+
+// Handle tool calls
+async function handleToolCall(tool, args) {
+  if (tool === 'search') {
+    const r = await fetch('/api/search?q=' + encodeURIComponent(args.q));
+    return await r.json();
+  } else if (tool === 'aipipe') {
+    const r = await fetch('/api/aipipe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(args)
+    });
+    return await r.json();
+  } else if (tool === 'eval_js') {
+    try {
+      return { result: runInSandbox(args.code) };
+    } catch (e) {
+      return { error: String(e) };
+    }
+  }
+  return { error: 'Unknown tool: ' + tool };
+}
+
+// Call backend LLM
+async function callLLMAndHandle() {
+  const model = modelPicker.value;
+  const r = await fetch('/api/llm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, messages })
+  });
+  const j = await r.json();
+  if (debugMode) console.log('LLM raw response', j);
+
+  if (j.assistant.function_call) {
+    const { name, arguments: argsStr } = j.assistant.function_call;
+    let args;
+    try { args = JSON.parse(argsStr); } catch { args = {}; }
+    addMessage('agent', `Calling tool: ${name}(${JSON.stringify(args)})`);
+    const toolResult = await handleToolCall(name, args);
+    messages.push({ role: 'function', name, content: JSON.stringify(toolResult) });
+    return await callLLMAndHandle();
+  } else {
+    const msg = j.assistant.content;
+    addMessage('agent', msg);
+    messages.push({ role: 'assistant', content: msg });
+  }
+}
+
+// Button handlers
+sendBtn.onclick = async () => {
+  const text = inputEl.value.trim();
+  if (!text) return;
+  addMessage('user', text);
+  messages.push({ role: 'user', content: text });
+  inputEl.value = '';
+  await callLLMAndHandle();
+};
+
+clearBtn.onclick = () => {
+  chatEl.innerHTML = '';
+  messages = [];
+};
+
+debugBtn.onclick = () => {
+  debugMode = !debugMode;
+  alert('Debug mode: ' + debugMode);
+};
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
