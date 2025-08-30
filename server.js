@@ -10,16 +10,16 @@ app.use(express.static('public'));
 // POST /api/llm -> proxy to AI Pipe (tool-calling enabled)
 app.post('/api/llm', async (req, res) => {
   try {
-    const { model, messages, token } = req.body; // token comes from frontend (via getProfile)
+    const { model, messages } = req.body;
 
-    if (!token) {
-      return res.status(401).json({ error: 'Missing AI Pipe token' });
+    if (!process.env.AIPIPE_TOKEN) {
+      return res.status(500).json({ error: 'Server missing AIPIPE_TOKEN env variable' });
     }
 
     const resp = await fetch('https://aipipe.org/openrouter/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${process.env.AIPIPE_TOKEN}`, // ✅ server-side token
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
