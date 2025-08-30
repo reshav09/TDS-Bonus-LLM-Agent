@@ -7,19 +7,17 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
-// POST /api/llm -> proxy to AI Pipe (tool-calling enabled)
+// POST /api/llm -> proxy to OpenRouter with tools enabled
 app.post('/api/llm', async (req, res) => {
   try {
     const { model, messages } = req.body;
 
-    if (!process.env.AIPIPE_TOKEN) {
-      return res.status(401).json({ error: 'Missing AI Pipe token in server environment' });
-    }
-
-    const resp = await fetch('https://aipipe.org/openrouter/v1/chat/completions', {
+    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.AIPIPE_TOKEN}`,
+        'Authorization': `Bearer ${process.env.AIPIPE_TOKEN}`, // use AIPipe token here
+        'HTTP-Referer': process.env.APP_URL || "http://localhost:3000",
+        'X-Title': 'My App',
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -27,7 +25,7 @@ app.post('/api/llm', async (req, res) => {
         messages,
         tools: [
           {
-            type: 'function',
+            type: "function",
             function: {
               name: 'search',
               description: 'Search the web',
@@ -41,18 +39,15 @@ app.post('/api/llm', async (req, res) => {
             }
           },
           {
-            type: 'function',
+            type: "function",
             function: {
               name: 'aipipe',
               description: 'Call AI Pipe',
-              parameters: {
-                type: 'object',
-                properties: {}
-              }
+              parameters: { type: 'object', properties: {} }
             }
           },
           {
-            type: 'function',
+            type: "function",
             function: {
               name: 'eval_js',
               description: 'Eval JavaScript',
@@ -66,7 +61,7 @@ app.post('/api/llm', async (req, res) => {
             }
           }
         ],
-        tool_choice: { type: 'auto' } // ✅ new schema
+        tool_choice: 'auto'
       })
     });
 
