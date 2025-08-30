@@ -13,36 +13,60 @@ app.post('/api/llm', async (req, res) => {
     const { model, messages } = req.body;
 
     if (!process.env.AIPIPE_TOKEN) {
-      return res.status(500).json({ error: 'Server missing AIPIPE_TOKEN env variable' });
+      return res.status(401).json({ error: 'Missing AI Pipe token in server environment' });
     }
 
     const resp = await fetch('https://aipipe.org/openrouter/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.AIPIPE_TOKEN}`, // ✅ server-side token
+        'Authorization': `Bearer ${process.env.AIPIPE_TOKEN}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         model: model || 'openai/gpt-4.1-nano',
         messages,
-        functions: [
+        tools: [
           {
-            name: 'search',
-            description: 'Search the web',
-            parameters: { type: 'object', properties: { q: { type: 'string' } }, required: ['q'] }
+            type: 'function',
+            function: {
+              name: 'search',
+              description: 'Search the web',
+              parameters: {
+                type: 'object',
+                properties: {
+                  q: { type: 'string' }
+                },
+                required: ['q']
+              }
+            }
           },
           {
-            name: 'aipipe',
-            description: 'Call AI Pipe',
-            parameters: { type: 'object', properties: {} }
+            type: 'function',
+            function: {
+              name: 'aipipe',
+              description: 'Call AI Pipe',
+              parameters: {
+                type: 'object',
+                properties: {}
+              }
+            }
           },
           {
-            name: 'eval_js',
-            description: 'Eval JavaScript',
-            parameters: { type: 'object', properties: { code: { type: 'string' } }, required: ['code'] }
+            type: 'function',
+            function: {
+              name: 'eval_js',
+              description: 'Eval JavaScript',
+              parameters: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' }
+                },
+                required: ['code']
+              }
+            }
           }
         ],
-        function_call: 'auto'
+        tool_choice: 'auto'
       })
     });
 
@@ -50,12 +74,12 @@ app.post('/api/llm', async (req, res) => {
     console.log(JSON.stringify(j, null, 2));
 
     const choice = j.choices?.[0];
-    const assistant = { content: '', function_call: null };
+    const assistant = { content: '', tool_call: null };
     if (choice?.message?.content) {
       assistant.content = choice.message.content;
     }
-    if (choice?.message?.function_call) {
-      assistant.function_call = choice.message.function_call;
+    if (choice?.message?.tool_calls) {
+      assistant.tool_call = choice.message.tool_calls[0];
     }
 
     res.json({ assistant });
