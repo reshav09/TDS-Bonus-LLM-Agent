@@ -7,18 +7,23 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
-// POST /api/llm -> proxy to OpenAI (tool-calling enabled)
+// POST /api/llm -> proxy to AI Pipe (tool-calling enabled)
 app.post('/api/llm', async (req, res) => {
   try {
-    const { model, messages } = req.body;
-    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    const { model, messages, token } = req.body; // token comes from frontend (via getProfile)
+
+    if (!token) {
+      return res.status(401).json({ error: 'Missing AI Pipe token' });
+    }
+
+    const resp = await fetch('https://aipipe.org/openrouter/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: model || 'gpt-4o-mini',
+        model: model || 'openai/gpt-4.1-nano',
         messages,
         functions: [
           {
@@ -40,8 +45,10 @@ app.post('/api/llm', async (req, res) => {
         function_call: 'auto'
       })
     });
+
     const j = await resp.json();
     console.log(JSON.stringify(j, null, 2));
+
     const choice = j.choices?.[0];
     const assistant = { content: '', function_call: null };
     if (choice?.message?.content) {
@@ -50,6 +57,7 @@ app.post('/api/llm', async (req, res) => {
     if (choice?.message?.function_call) {
       assistant.function_call = choice.message.function_call;
     }
+
     res.json({ assistant });
   } catch (err) {
     console.error(err);
