@@ -66,7 +66,7 @@ app.post('/api/llm', async (req, res) => {
             }
           }
         ],
-        tool_choice: 'auto'
+        tool_choice: { type: 'auto' } // ✅ new schema
       })
     });
 
@@ -75,6 +75,7 @@ app.post('/api/llm', async (req, res) => {
 
     const choice = j.choices?.[0];
     const assistant = { content: '', tool_call: null };
+
     if (choice?.message?.content) {
       assistant.content = choice.message.content;
     }
