@@ -7,77 +7,49 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
-// POST /api/llm -> proxy to OpenRouter with tools enabled
+// POST /api/llm -> proxy to OpenAI (tool-calling enabled)
 app.post('/api/llm', async (req, res) => {
   try {
     const { model, messages } = req.body;
-
-    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.AIPIPE_TOKEN}`, // use AIPipe token here
-        'HTTP-Referer': process.env.APP_URL || "http://localhost:3000",
-        'X-Title': 'My App',
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: model || 'openai/gpt-4.1-nano',
+        model: model || 'gpt-4o-mini',
         messages,
-        tools: [
+        functions: [
           {
-            type: "function",
-            function: {
-              name: 'search',
-              description: 'Search the web',
-              parameters: {
-                type: 'object',
-                properties: {
-                  q: { type: 'string' }
-                },
-                required: ['q']
-              }
-            }
+            name: 'search',
+            description: 'Search the web',
+            parameters: { type: 'object', properties: { q: { type: 'string' } }, required: ['q'] }
           },
           {
-            type: "function",
-            function: {
-              name: 'aipipe',
-              description: 'Call AI Pipe',
-              parameters: { type: 'object', properties: {} }
-            }
+            name: 'aipipe',
+            description: 'Call AI Pipe',
+            parameters: { type: 'object', properties: {} }
           },
           {
-            type: "function",
-            function: {
-              name: 'eval_js',
-              description: 'Eval JavaScript',
-              parameters: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' }
-                },
-                required: ['code']
-              }
-            }
+            name: 'eval_js',
+            description: 'Eval JavaScript',
+            parameters: { type: 'object', properties: { code: { type: 'string' } }, required: ['code'] }
           }
         ],
-        tool_choice: 'auto'
+        function_call: 'auto'
       })
     });
-
     const j = await resp.json();
     console.log(JSON.stringify(j, null, 2));
-
     const choice = j.choices?.[0];
-    const assistant = { content: '', tool_call: null };
-
+    const assistant = { content: '', function_call: null };
     if (choice?.message?.content) {
       assistant.content = choice.message.content;
     }
-    if (choice?.message?.tool_calls) {
-      assistant.tool_call = choice.message.tool_calls[0];
+    if (choice?.message?.function_call) {
+      assistant.function_call = choice.message.function_call;
     }
-
     res.json({ assistant });
   } catch (err) {
     console.error(err);
